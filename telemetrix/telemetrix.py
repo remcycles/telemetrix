@@ -20,6 +20,7 @@ import sys
 import threading
 import time
 from collections import deque
+from queue import Queue
 
 import serial
 # noinspection PyPackageRequirementscd
@@ -112,6 +113,9 @@ class Telemetrix(threading.Thread):
         # create a deque to receive and process data from the arduino
         self.the_deque = deque()
 
+        # create a queue to hold digital poll events
+        self._digital_poll_queue = Queue()
+
         # The report_dispatch dictionary is used to process
         # incoming report messages by looking up the report message
         # and executing its associated processing method.
@@ -125,6 +129,8 @@ class Telemetrix(threading.Thread):
             {PrivateConstants.DEBUG_PRINT: self._report_debug_data})
         self.report_dispatch.update(
             {PrivateConstants.DIGITAL_REPORT: self._digital_message})
+        self.report_dispatch.update(
+            {PrivateConstants.DIGITAL_POLL_REPORT: self._digital_poll_message})
         self.report_dispatch.update(
             {PrivateConstants.ANALOG_REPORT: self._analog_message})
         self.report_dispatch.update(
@@ -265,7 +271,8 @@ class Telemetrix(threading.Thread):
         self.the_data_receive_thread.start()
 
         print(f"Telemetrix:  Version {PrivateConstants.TELEMETRIX_VERSION}\n\n"
-              f"Copyright (c) 2021 Alan Yorinks All Rights Reserved.\n")
+              f"Copyright (c) 2021 Alan Yorinks All Rights Reserved.\n"
+              f"Copyright (c) 2022 Remington Furman All Rights Reserved.\n")
 
         # using the serial link
         if not self.ip_address:
@@ -451,6 +458,19 @@ class Telemetrix(threading.Thread):
 
         command = [PrivateConstants.DIGITAL_WRITE, pin, value]
         self._send_command(command)
+
+    def digital_poll(self, pin):
+        """
+        Reads the current value of the specified pin.
+
+        :param pin: arduino pin number
+
+        """
+
+        command = [PrivateConstants.DIGITAL_POLL, pin]
+        self._send_command(command)
+        # Wait for result
+        return self._digital_poll_queue.get()[1]
 
     def disable_all_reporting(self):
         """
@@ -2172,6 +2192,19 @@ class Telemetrix(threading.Thread):
         if self.digital_callbacks[pin]:
             message = [PrivateConstants.DIGITAL_REPORT, pin, value, time_stamp]
             self.digital_callbacks[pin](message)
+
+    def _digital_poll_message(self, data):
+        """
+        This is a private message handler method.
+        It is a message handler for Digital Poll Messages.
+
+        :param data: digital poll message
+
+        """
+        pin = data[0]
+        value = data[1]
+        time_stamp = time.time()
+        self._digital_poll_queue.put((pin, value, time_stamp))
 
     def _firmware_message(self, data):
         """
