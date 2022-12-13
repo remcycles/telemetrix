@@ -115,6 +115,7 @@ class Telemetrix(threading.Thread):
 
         # create a queue to hold digital poll events
         self._digital_poll_queue = Queue()
+        self._analog_poll_queue = Queue()
 
         # The report_dispatch dictionary is used to process
         # incoming report messages by looking up the report message
@@ -133,6 +134,8 @@ class Telemetrix(threading.Thread):
             {PrivateConstants.DIGITAL_POLL_REPORT: self._digital_poll_message})
         self.report_dispatch.update(
             {PrivateConstants.ANALOG_REPORT: self._analog_message})
+        self.report_dispatch.update(
+            {PrivateConstants.ANALOG_POLL_REPORT: self._analog_poll_message})
         self.report_dispatch.update(
             {PrivateConstants.FIRMWARE_REPORT: self._firmware_message})
         self.report_dispatch.update({PrivateConstants.I_AM_HERE_REPORT: self._i_am_here})
@@ -446,6 +449,18 @@ class Telemetrix(threading.Thread):
         command = [PrivateConstants.ANALOG_WRITE, pin, value_msb, value_lsb]
         self._send_command(command)
 
+    def analog_poll(self, pin):
+        """
+        Reads the current value of the specified pin.
+
+        :param pin: arduino pin number
+
+        """
+        command = [PrivateConstants.ANALOG_POLL, pin]
+        self._send_command(command)
+        # Wait for result
+        return self._analog_poll_queue.get()[1]
+
     def digital_write(self, pin, value):
         """
         Set the specified pin to the specified value.
@@ -455,7 +470,6 @@ class Telemetrix(threading.Thread):
         :param value: pin value (1 or 0)
 
         """
-
         command = [PrivateConstants.DIGITAL_WRITE, pin, value]
         self._send_command(command)
 
@@ -466,7 +480,6 @@ class Telemetrix(threading.Thread):
         :param pin: arduino pin number
 
         """
-
         command = [PrivateConstants.DIGITAL_POLL, pin]
         self._send_command(command)
         # Wait for result
@@ -2124,6 +2137,19 @@ class Telemetrix(threading.Thread):
         if self.analog_callbacks[pin]:
             message = [PrivateConstants.ANALOG_REPORT, pin, value, time_stamp]
             self.analog_callbacks[pin](message)
+
+    def _analog_poll_message(self, data):
+        """
+        This is a private message handler method.
+        It is a message handler for analog poll Messages.
+
+        :param data: analog poll message data
+
+        """
+        pin = data[0]
+        value = (data[1] << 8) + data[2]
+        time_stamp = time.time()
+        self._analog_poll_queue.put((pin, value, time_stamp))
 
     def _dht_report(self, data):
         """
