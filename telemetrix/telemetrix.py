@@ -2215,7 +2215,7 @@ class Telemetrix(threading.Thread):
         value = data[1]
 
         time_stamp = time.time()
-        if self.digital_callbacks[pin]:
+        if pin in self.digital_callbacks and self.digital_callbacks[pin]:
             message = [PrivateConstants.DIGITAL_REPORT, pin, value, time_stamp]
             self.digital_callbacks[pin](message)
 
